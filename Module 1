@@ -1,0 +1,429 @@
+***Машина ISP
+1. Настройка доменного имени
+hostname
+hostnamectl set-hostname isp.au-team.irpo
+
+2. Настройка интерфейсов
+ip a
+( проврека ens3 {10.0.137.220/24 dynamic}; ens4 {172.16.1.1/28}; ens5 {172.16.2.1/28} ) <- если все так настройка не требуется
+
+3. Настройка динамической транслации адресов
+vim /etc/net/sysctl.conf
+( искать net.ipv4.ip_forward = 1 } <- если все так настройка не требуется
+
+iptables -t nat -L 
+( должен отобразиться MASQUERADE all , если нету провисывать команды ниже и потом перепроверить командой выше )
+iptables -t nat -A POSTROUTING -o ens3 -j MASQUERADE
+iptables-save >> /etc/sysconfig/iptables
+systemctl enable --now iptables
+
+4. Настройка часового пояса
+timedatectl
+( будет преднастроенно )
+
+5. Настройка сетевого времени chrony
+chronyc sources
+( должен отобразиться следующий ip 172.16.1.1 )
+vim /etc/chrony.conf
+( искать { pool 172.16.1.1 iburst } если что-то другое написано изменять на данный ip )
+
+***Машина HQ-RTR
+1. Настройка доменного имени
+en
+conf t
+hostname HQ-RTR
+ip domain-name au-team.irpo
+end
+write memory
+
+2. Настройка IP-адресов
+show ip interface brief
+( должна быть следующая преднастройка isp {172.16.1.2/28}; vl100 {10.10.100.1/27}; vl200 {10.10.200.1/28}; vl999 {10.10.30.1/29} )
+преднастроен
+
+3. Настройка пользователей
+show users localdb
+( должен быть добавлен {User: net_admin} )
+преднастроен
+
+4. Настройка GRE
+( проверить show interface tunnel.0 - пусто прописываем команды )
+en
+conf t
+interface tunnel.0
+ip address 10.10.10.1/30
+ip tunnel 172.16.1.2 172.16.2.2 mode gre
+end
+write memory
+
+5. Настройка статической маршрутизации
+( проверить show ip route - нет значение со *, значит не настроен )
+conf t
+ip route 0.0.0.0 0.0.0.0 172.16.1.1
+end 
+write memory
+
+6. Настройка динамической маршрутизации (OSPF)
+( проверить show ip route - нет буквы O, значит не настроен )
+en
+conf t
+router ospf 0
+network 10.10.100.0/27 area 0
+network 10.10.200.0/28 area 0
+network 10.10.30.0/29 area 0
+network 10.10.10.0/30 area 0
+passive-interface default
+no passive-interface tunnel.0
+area 0 authentication
+exit
+interface tunnel.0
+ip ospf authentification message-digest
+ip ospf message-digest-key 1 md5 P@ssw0rd 
+end 
+write memory
+
+7. Настройка динамической трансляции адресов (NAT)
+( проверить show ip nat translations - если пусто в строке Source, необходимо настроить )
+en
+conf t
+interface isp
+ip nat outside
+exit
+interface vl100
+ip nat inside
+exit
+interface vl200
+ip nat inside
+exit
+interface vl999
+ip nat inside
+exit
+ip nat pool HQ 10.10.0.1-10.10.200.254
+ip nat source dynamic inside-to-outside pool HQ overload interface isp
+end 
+write memory
+
+8. Настройка протокола динамической конфигурации хостов (DHCP) 
+( проверить show dhcp-server 1 detailed )
+преднастроен
+
+9. Настройка часового пояса
+( проверить show ntp timezone - если пусто, необходимо настроить )
+en
+conf t
+ntp timezone utc+3
+
+***Машина BR-RTR
+1. Настройка доменного имени
+en
+conf t
+hostname BR-RTR
+ip domain-name au-team.irpo
+end
+write memory
+
+2. Настройка IP-адресов
+( должна быть следующая преднастройка isp {172.16.2.2/28}; fw {10.20.10.1/30} )
+преднастроен
+
+3. Настройка пользователей
+show users localdb
+( должен быть добавлен {User: net_admin} )
+преднастроен
+
+4. Настройка GRE
+( проверить show interface tunnel.0 - пусто прописываем команды )
+en
+conf t
+interface tunnel.0
+ip address 10.10.10.2/30
+ip tunnel 172.16.2.2 172.16.1.2 mode gre
+end 
+write memory
+
+5. Настройка статической маршрутизации
+( проверить show ip route - нет значение со *, значит не настроен )
+conf t
+ip route 0.0.0.0 0.0.0.0 172.16.2.1
+end 
+write memory
+
+6. Настрйока динамической маршрутизации (OSPF)
+( проверить show ip route - нет буквы O, значит не настроен )
+en
+conf t
+router ospf 0
+network 10.20.10.0/30 area 0
+network 10.10.10.0/30 area 0
+passive-interface default
+no passive-interface tunnel.0
+no passive-interface fw
+area 0 authentication
+exit
+interface tunnel.0
+ip ospf authentification message-digest 
+ip ospf message-digest-key 1 md5 P@ssw0rd
+exit
+interface fw 
+ip ospf authentification message-digest 
+ip ospf message-digest-key 1 md5 P@ssw0rd
+end 
+write memory
+
+7. Настройка динамической трансляции адресов (NAT)
+( проверить show ip nat translations - если пусто в строке Source, необходимо настроить )
+en
+conf t
+interface isp
+ip nat outside
+exit
+interface fw
+ip nat inside
+exit
+ip nat pool BR 10.0.0.1-10.254.254.254
+ip nat source dynamic inside-to-outside pool BR overload interface isp
+end 
+write memory
+
+8. Настройка часового пояса
+( проверить show ntp timezone - если пусто, необходимо настроить )
+en
+conf t
+ntp timezone utc+3
+
+***Машина HQ-SW
+1. Настройка доменного имени
+hostname
+hostnamectl set-hostname hq-sw.au-team.irpo
+
+2. Настройка интерфейсов
+ip a
+( проврека ens3 {ovs-system state UP}; ens4 {ovs-system state UP}; ens5 {ovs-system state UP} ) <- если все так настройка не требуется
+
+3. Настройка коммутации в сегменте HQ (VLAN)
+ovs-vsctl show
+( проверить {bridge hq-sw}; {Port ens5, tag: 200}; {Port ens3, trunks: [100,200,999], tag: 999}; {Port ens4, tag: 100} ) <- если все так настройка не требуется
+
+***Машина HQ-SRV
+1. Настройка доменного имени
+hostname
+hostnamectl set-hostname hq-srv.au-team.irpo
+
+2. Настройка интерфейсов
+ip a
+( проверка ens3 нет ip-адреса, необходимо настроить )
+vim /etc/net/ifaces/ens3/options
+ Проверить содержимое файла
+ TYPE=eth
+ CONFIG_WIRELESS=no
+ BOOTPROTO=static
+ SYSTEMD_BOOTPROTO=static
+ CONFIG_IPV4=yes
+ DISABLED=no
+ NM_CONTROLLED=no
+ SYSTEMD_CONTROLLED=no
+ 
+vim /etc/net/ifaces/ens3/ipv4address
+ Внести в файл информацию
+ 10.10.100.2/27
+
+vim /etc/net/ifaces/ens3/ipv4route
+ Внести в файл информацию
+ default via 10.10.100.1
+
+vim /etc/net/ifaces/ens3/resolv.conf
+ Внести в файл информацию
+ search au-team.irpo
+ nameserver 77.88.8.8
+ nameserver 127.0.0.1
+ 
+systemctl restart network
+
+3. Настройка локальной учетной записи
+vim /etc/passwd
+( проверить следующую строчку {sshuser:x:2026:501::/home/sshuser:/bin/bash} <- если все так настройка не требуется
+
+vim /etc/group
+( проверить следующую строчку {wheel:x:10:root,zabbix,user,sshuser} <- если все так настройка не требуется
+
+vim +123 /etc/sudoers 
+( WHEEL_USERS ALL=(ALL:ALL) NOPASSWD: ALL ) <- раскоментировать строчку, если стоит #
+
+4. Настройка безопасноо удаленного доступа (SSH)
+vim /etc/openssh/sshd_config
+( проверить следущую строчку {MaxAuthTries 2} чтобы были попытки ввода пароля )
+( найти следущую строчку {#Banner none} - нужно раскоментировать и вписать следующее {Banner /etc/openssh/banner} )
+
+vim /etc/openssh/banner
+ Внести в файл информацию
+ Authorized access only
+ 
+systemctl restart sshd
+
+5. Настройте инфраструктуру разрешения доменных имён (DNS)
+vim /etc/bind/rfc1912.conf
+( проверить следующую строчку {zone "10.10.in-addr.arpa", file "10.10.in-addr.arpa", zone "au-team.irpo", file "au-team.irpo.zone"}
+
+vim /etc/bind/zone/au-team.irpo.zone
+( проверить следующую строчку {hq-srv.au-team.irpo. admin.au-team.irpo.} <- если написано так нужно исправить на -> {hq-srv.au-team.irpo. root.au-team.irpo.}
+
+vim /etc/bind/zone/10.10.in-addr.arpa
+( проверить следующую строчку {au-team.irpo root.auteam.itpo.} <- если написано так нужно исправить на -> {au-team.irpo. root.au-team.irpo.}
+
+vim /etc/bind/options.conf
+ Внести в файл изменения в следующих строчках
+ listen-on { 10.10.100.2; };
+ listen-on-v6 { none; };
+
+ forwarders { 77.88.8.8; }; <- не забудь раскоментировать данную строчку, т.е. убрать в начале //
+
+ allow-query { any; }; <- не забудь раскоментировать данную строчку, т.е. убрать в начале //
+
+vim /etc/bind/zone/au-team.irpo.zone
+( проверить следующую строчку {hq-srv.au-team.irpo. root.au-team.irpo.}
+перепроверка
+
+vim /etc/bind/zone/10.10.in-addr.arpa
+( проверить следующую строчку {au-team.irpo. root.au-team.irpo.} ) 
+перепроверка
+
+6. Настройка часового пояса
+timedatectl
+преднастроен
+
+***Машина HQ-CLI
+1. Настройка доменного имени
+hostname
+hostnamectl set-hostname hq-cli.au-team.irpo
+
+2. Настройка интерфейсов
+ip a
+( проврека ens3 {10.10.200.2/28 dynamic} ) <- если все так настройка не требуется
+
+3. Настройка часового
+timedatectl
+преднастроен
+
+**Машина BR-CLI
+1. Настройка доменного имени
+hostname
+hostnamectl set-hostname br-cli.au-team.irpo
+
+2. Настройка интерфейсов
+ip a
+( проврека ens3, если пусто и нету ip-адреса, требуется настройка )
+su -
+mv /etc/net/ifaces/ens18 /etc/net/ifaces/ens3
+vim /etc/net/ifaces/ens3/options
+ Проверить содержимое файла
+ TYPE=eth
+ CONFIG_WIRELESS=no
+ BOOTPROTO=static
+ SYSTEMD_BOOTPROTO=static
+ CONFIG_IPV4=yes
+ DISABLED=no
+ NM_CONTROLLED=no
+ SYSTEMD_CONTROLLED=no
+
+vim /etc/net/ifaces/ens3/ipv4address
+ Внести в файл информацию
+ 10.20.30.2/29
+
+vim /etc/net/ifaces/ens3/ipv4route
+ Внести в файл информацию
+ default via 10.20.30.1
+
+vim /etc/net/ifaces/ens3/resolv.conf
+ Внести в файл информацию
+ search au-team.irpo
+ nameserver 10.10.100.2
+
+systemctl restart network
+reboot
+
+3. Настройка часового пояса
+timedatectl
+преднастроен
+
+**Машина BR-SRV
+1. Настройка доменного имени
+hostname
+hostnamectl set-hostname br-srv.au-team.irpo
+
+2. Настройка интерфейсов
+ip a
+( проверка ens3 нет ip-адреса, необходимо настроить )
+vim /etc/net/ifaces/ens3/options
+ Проверить содержимое файла
+ TYPE=eth
+ CONFIG_WIRELESS=no
+ BOOTPROTO=static
+ SYSTEMD_BOOTPROTO=static
+ CONFIG_IPV4=yes
+ DISABLED=no
+ NM_CONTROLLED=no
+ SYSTEMD_CONTROLLED=no
+ 
+vim /etc/net/ifaces/ens3/ipv4address
+ Внести в файл информацию
+ 10.20.20.2/28
+
+vim /etc/net/ifaces/ens3/ipv4route
+ Внести в файл информацию
+ default via 10.20.20.1
+
+vim /etc/net/ifaces/ens3/resolv.conf
+ Внести в файл информацию
+ search au-team.irpo
+ nameserver 10.10.100.2
+ 
+systemctl restart network
+
+3. Настройка локальной учетной записи
+vim /etc/passwd
+( проверить следующую строчку {sshuser:x:2026:501::/home/sshuser:/bin/bash} <- если все так настройка не требуется
+
+vim /etc/group
+( проверить следующую строчку {wheel:x:10:root,zabbix,user,sshuser} <- если все так настройка не требуется
+
+vim +123 /etc/sudoers 
+( WHEEL_USERS ALL=(ALL:ALL) NOPASSWD: ALL ) <- раскоментировать строчку, если стоит #
+
+4. Настройка безопасноо удаленного доступа (SSH)
+vim /etc/openssh/sshd_config
+( проверить следущую строчку {MaxAuthTries 2} чтобы были попытки ввода пароля )
+( найти следущую строчку {#Banner none} - нужно раскоментировать и вписать следующее {Banner /etc/openssh/banner} )
+
+vim /etc/openssh/banner
+ Внести в файл информацию
+ Authorized access only
+ 
+systemctl restart sshd
+
+5. Настройка часового пояса
+timedatectl
+
+***Машина BR-FW (Настраивается через браузер на BR-CLI)
+1. Зайти на сайт
+10.20.30.1:8443 необходимо принять все риски, чтобы попасть на сайт
+Логин: Admin
+Пароль: IdecoP@ssw0rd
+
+2. Настройка доменного имени
+Нажать на 3 полоски, зайти в "Управление сервером" -> "Терминал"
+hostname
+hostnamectl set-hostname br-fw.au-team.irpo
+
+3. Настройка интерфейсов
+ip -4 a
+( проврека leth2: 10.20.10.2, leth3: 10.20.20.1, leth4: 10.20.30.1 ) <- если все так настройка не требуется
+
+4. Настройка динамической маршрутизации (OSPF)
+Нажать на 3 полоски, зайти в "Маршрутизация" -> "OSPF"
+Выбрать MD5 в поле Key ID: 1, Пароль: P@ssw0rd -> Нажать "Сохранить" -> Нажать "+ Добавить"
+
+Далее в поле Интерфейс: oif0, Область (Area): 0, Тип области: Normal, Стоимость: 1, Включить сверху ползунок, чтобы под OSPF было написано работает, и нажать кнопку "Добавить"
+
+5. Настройка часовго пояса
+timedatectl
+преднастроен
