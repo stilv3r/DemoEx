@@ -1,3 +1,61 @@
 ***Машина BR-SRV
 1. Настройка контроллера домена Samba DC
 samba-tool domain info 127.0.0.1 
+( проверка {Domain  : au-team.irpo ) <- если все так, настройка не требуется
+
+samba-tool group list
+( искать группы "hq" и "br" ) <- если отсутвуются надо создать
+samba-tool group add hq
+samba-tool group add br
+
+samba-tool user list
+( искать пользователей "hquser" и "bruser" ) <- если отсутствуют надо создать и определить их сразу в группу "hq" и "br"
+Для пользователй "hq":
+for i in {1..5}; 
+do
+  samba-tool user add hquser$i P@ssw0rd;
+  samba-tool user setexpiry hquser$i --noexpiry;
+  samba-tool group addmembers "hq" hquser$i;
+done
+
+Для пользователй "br":
+for i in {1..5}; 
+do
+  samba-tool user add bruser$i P@ssw0rd;
+  samba-tool user setexpiry bruser$i --noexpiry;
+  samba-tool group addmembers "br" bruser$i;
+done
+
+samba-tool group listmembers hq
+samba-tool group listmembers br
+( проврека созданных пользователей в группе "hq" и "br"
+
+2. Настройка сетевого времени chrony
+chronyc sources
+( должен отобразиться следующий ip 172.16.1.1 ) <- если другой ip-адрес, нужно настроить
+vim /etc/chrony.conf
+( искать { pool 172.16.1.1 iburst } если что-то другое написано изменять на данный ip )
+
+3. Настройка ansible
+ansible all –m ping
+( если нету ответа и все строчки красные нужно настроить )
+
+vim /etc/ansible/hosts
+Заполнить файл по образцу
+[hq]
+hq-srv ansible_host=10.10.100.2 ansible_port=2026 ansible_ssh_user=root ansible_ssh_pass=toor
+hq-cli ansible_host=10.10.200.2 ansible_port=22 ansible_ssh_user=root ansible_ssh_pass=toor
+hq-rtr ansible_host=172.16.1.2 ansible_port=22 ansible_ssh_user=net_admin ansible_ssh_pass=P@ssw0rd ansible_connection=network_cli ansible_network_os=ios
+
+[br]
+br-rtr ansible_host=172.16.2.2 ansible_port=22 ansible_ssh_user=net_admin ansible_ssh_pass=P@ssw0rd ansible_connection=network_cli ansible_network_os=ios
+br-cli ansible_host=10.20.30.2 ansible_port=22 ansible_ssh_user=root ansible_ssh_pass=toor
+
+ansible all -m ping
+( должен появится ответ и все строчки будут и зеленые и фиолетовые )
+
+4. Настройка веб прриложения в docker
+Открыть браузер на BR-CLI и ввести адрес 10.20.20.2:8080
+преднастроен
+
+***Машина HQ-SRV
