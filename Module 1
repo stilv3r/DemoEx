@@ -12,8 +12,8 @@ vim /etc/net/sysctl.conf
 ( искать net.ipv4.ip_forward = 1 } <- если все так настройка не требуется
 
 iptables -t nat -L 
-( должен отобразиться MASQUERADE all , если нету провисывать команды ниже и потом перепроверить командой выше )
-iptables -t nat -A POSTROUTING -o ens3 -j MASQUERADE
+( должен отобразиться MASQUERADE all , если нету прописывать команды ниже и потом перепроверить командой выше )
+iptables –t nat –A POSTROUTING –o ens3 –j MASQUERADE
 iptables-save >> /etc/sysconfig/iptables
 systemctl enable --now iptables
 
@@ -23,7 +23,7 @@ timedatectl
 
 5. Настройка сетевого времени chrony
 chronyc sources
-( должен отобразиться следующий ip 172.16.1.1 )
+( должен отобразиться следующий ip 172.16.1.1 ) <- если другой ip-адрес, нужно настроить
 vim /etc/chrony.conf
 ( искать { pool 172.16.1.1 iburst } если что-то другое написано изменять на данный ip )
 
