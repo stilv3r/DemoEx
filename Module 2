@@ -1,1 +1,3 @@
-
+***Машина BR-SRV
+1. Настройка контроллера домена Samba DC
+samba-tool domain info 127.0.0.1 
