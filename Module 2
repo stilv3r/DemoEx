@@ -166,7 +166,7 @@ write memory
 2. Настройка статической трансляции портов
 en
 show running-config
-( проверить следующие строчки {ip nat source static tcp 10.10.100.2 80 172.16.1.2 8080}, {ip nat source static tcp 10.10.100.2 2026 172.16.1.2 2026}
+( проверить следующие строчки {ip nat source static tcp 10.10.100.2 80 172.16.1.2 8080}, {ip nat source static tcp 10.10.100.2 2026 172.16.1.2 2026} )
 преднастроено
 
 ***Машина HQ-CLI
